@@ -1,0 +1,16 @@
+# Ignore all output files
+*.out
+*.o
+*.exe
+*.bin
+*.obj
+*.txt
+
+# Do not ignore Python files
+!*.py
+!command.txt
+
+# Do not ignore tables directory
+!tables/
+
+!test/

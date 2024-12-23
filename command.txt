@@ -1,0 +1,6 @@
+#for convenience
+python main.py basic.asm -o basic
+python main.py CSECT.asm -o CSECT
+python main.py LiteralSDF.asm -o LiteralSDF
+python main.py Program_Block.asm -o Program_Block
+python main.py Testcase.asm -o Testcase
