@@ -450,16 +450,30 @@ class Section:
         
         
     def set_symbol(self) -> None:
-        """
-        Initialize, process, and resolve symbols and their locations.
-        """
-        self.__initialize_symbols()
-        self.__resolve_symbols()
-        self.__resolve_forward_references()
 
+        self.__initialize_symbols()
+        end = False
+        while not end:
+            end = True
+            for symbol in self.__symbol_table:
+                if self.__symbol_table[symbol] == None:
+                    end = False
+                    break
+
+            if end: break #if all symbols are resolved, break the loop
+            self.__process_symbols()
+        
+        self.__resolve_forward_references()
+        # print("End of setting_symbol, Symbol Table:")
+        # for symbol in self.__symbol_table:
+        #     print(f"{symbol} => {self.__symbol_table[symbol]}")
+        # print("\n")
+
+    #don't call these 3 functions directly, they are called by set_symbol
     def __initialize_symbols(self) -> None:
         for instruction in self.instructions:
-            if instruction.symbol is not None and instruction.symbol != "":
+
+            if instruction.symbol != "":
                 self.__symbol_table[instruction.symbol] = None
 
             if instruction.mnemonic == "EXTDEF":
@@ -470,120 +484,91 @@ class Section:
                 for symbol in instruction.operand.split(","):
                     self.__extref_table[symbol] = 0
 
-    def __resolve_symbols(self) -> None:
-        # Iteratively resolve symbols until all are processed.
-        while any(value is None for value in self.__symbol_table.values()):
-            self.__process_symbols()
 
     def __process_symbols(self) -> None:
-        locctr = 0
+
+        LOCCTR = 0
+        #print("Processing symbols...")
         for instruction in self.instructions:
-            if instruction.symbol is not None and instruction.symbol != "":
-                self.__update_symbol_table(instruction.symbol, locctr)
+            #print("processing instruction:", instruction)
+            if instruction.symbol != "":
+                self.__symbol_table[instruction.symbol] = LOCCTR
+                if instruction.symbol in self.__extdef_table:
+                    self.__extdef_table[instruction.symbol] = LOCCTR
+                #print(f"symbol: {instruction.symbol}, LOCCTR: {LOCCTR}")
 
-            locctr = self.__handle_instruction(instruction, locctr)
-
-    def __update_symbol_table(self, symbol: str, locctr: int) -> None:
-        if symbol in self.__symbol_table:
-            self.__symbol_table[symbol] = locctr
-        if symbol in self.__extdef_table:
-            self.__extdef_table[symbol] = locctr
-
-    def __handle_instruction(self, instruction, locctr: int) -> int:
-        # Handle different instruction types and update the location counter.
-        if instruction.mnemonic == "START":
-            locctr = int(instruction.operand, 16)
-            self.__update_symbol_table(instruction.symbol, locctr)
-            
-        elif instruction.mnemonic == "CSECT":
-            locctr = 0
-            self.__update_symbol_table(instruction.symbol, locctr)
-            
-        elif instruction.mnemonic == "RESW" or instruction.mnemonic == "RESB":
-            locctr = self.__handle_resw_b(instruction, locctr)
-            
-        elif instruction.mnemonic == "BYTE":
-            locctr +=self.__calculate_byte_length(instruction)
-    
-        elif instruction.mnemonic == "WORD":
-            locctr = self.__handle_word(instruction, locctr)
-            
-        elif instruction.mnemonic == "EQU":
-            self.__resolve_equ(instruction, locctr)
-            
-        elif instruction.mnemonic == "ORG":
-            try:
-                locctr = int(self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
-            except:
-                raise Exception("ORG does't support forward reference")
-        
-        elif instruction.mnemonic == "BASE":
-            self.__resolve_base(instruction, locctr)
-        
-        elif instruction.mnemonic == "RSUB":
-            instruction.operand = "#0"
-            locctr += 3
-        else:
-            locctr += int(instruction.format)
-        
-        return locctr
-
-
-    def __handle_resw_b(self, instruction, locctr: int) -> int:
-        size=0  
-        try:
-            size = int(self.calculate(instruction.operand, locctr, instruction.mnemonic))
-            if instruction.mnemonic=="RESW":
-                size*=3
-        except:
-            print("calculate error:"+ self.calculate(instruction.operand, locctr, instruction.mnemonic))
-        
-        return locctr + size
-
-
-    def __handle_word(self, instruction, locctr: int) -> int:
-        result = self.calculate(instruction.operand, locctr, instruction.mnemonic)
-        if result != None:
-            if self.__symbol_table[instruction.symbol] == None:
-                self.__symbol_table[instruction.symbol] = result
+            if instruction.mnemonic == "START":
+                LOCCTR = int(instruction.operand, 16)
+                self.__symbol_table[instruction.symbol] = LOCCTR
+            elif instruction.mnemonic == "CSECT":
+                LOCCTR = 0
+                self.__symbol_table[instruction.symbol] = 0
+                #print(f"symbol: {instruction.symbol}, LOCCTR: {LOCCTR}")
+            elif instruction.mnemonic == "RESW":
+                self.__symbol_table[instruction.symbol] = LOCCTR
+                try:
+                    LOCCTR += 3 * int(self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
+                except:
+                    continue
+            elif instruction.mnemonic == "RESB":
+                self.__symbol_table[instruction.symbol] = LOCCTR
+                try:
+                    LOCCTR += int(self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
+                except:
+                    print("calculate error:"+ self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
+                    continue
+            elif instruction.mnemonic == "BYTE":
+                self.__symbol_table[instruction.symbol] = LOCCTR
+                if instruction.operand[0] == "C" or instruction.operand[0] == "X":
+                    LOCCTR += len(instruction.operand) - 3 if instruction.operand[0] == "C" else (len(instruction.operand) - 3) // 2
+                else:
+                    print("Syntax Error: Invalid BYTE operand"+instruction.operand+" at "+instruction.location)
+                    print("Expected: C'EOF' or X'05'")
+                    raise Exception("Syntax Error: Invalid BYTE operand")
+            elif instruction.mnemonic == "WORD":
+                result = self.calculate(instruction.operand, LOCCTR, instruction.mnemonic)
+                if result != None:
+                    if self.__symbol_table[instruction.symbol] == None:
+                        self.__symbol_table[instruction.symbol] = result
+                    else:
+                        self.__symbol_table[instruction.symbol+"_addr"] = self.__symbol_table[instruction.symbol] 
+                        self.__symbol_table[instruction.symbol] = result
+                LOCCTR += 3
+            elif instruction.mnemonic == "EQU":
+                result = self.calculate(instruction.operand, LOCCTR, instruction.mnemonic)
+                # print(f"instruction: {instruction}")
+                # print(f"result: {result}")
+                if result != None:
+                    if self.__symbol_table[instruction.symbol] == None:
+                        self.__symbol_table[instruction.symbol] = result
+                    else:
+                        self.__symbol_table[instruction.symbol+"_addr"] = self.__symbol_table[instruction.symbol] 
+                        self.__symbol_table[instruction.symbol] = result
+            elif instruction.mnemonic == "ORG":
+                try:
+                    LOCCTR = int(self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
+                except:
+                    raise Exception("ORG does't support forward reference")
+                    
+            elif instruction.mnemonic == "BASE":
+                result = self.calculate(instruction.operand, LOCCTR, instruction.mnemonic)
+                if result != None:
+                    self.__symbol_table[instruction.symbol] = result
+            elif instruction.mnemonic == "RSUB":
+                instruction.operand = "#0"
+                LOCCTR += 3
             else:
-                self.__symbol_table[instruction.symbol+"_addr"] = self.__symbol_table[instruction.symbol] 
-                self.__symbol_table[instruction.symbol] = result
-        return locctr + 3
-
-    def __handle_org(self, instruction, locctr: int) -> int:
-        try:
-            locctr = int(self.calculate(instruction.operand, LOCCTR, instruction.mnemonic))
-            return locctr
-        except:
-            raise Exception("ORG does't support forward reference")
-
-
-    def __calculate_byte_length(self, instruction) -> int:
-        # Calculate the length of a BYTE directive.
-        if instruction.operand.startswith("C") or instruction.operand.startswith("X"):
-            length = len(instruction.operand) - 3 if instruction.operand[0] == "C" else (len(instruction.operand) - 3) // 2
-            return length
-        else:
-            print("Syntax Error: Invalid BYTE operand"+instruction.operand+" at "+instruction.location)
-            print("Expected: C'EOF' or X'05'")
-            raise ValueError(f"Invalid BYTE operand: {instruction.operand}")
-
-    def __resolve_equ(self, instruction, locctr: int) -> None:
-        # Resolve EQU directives and update the symbol table.
-        result = self.calculate(instruction.operand, locctr, instruction.mnemonic)
-        if result is not None:
-            if self.__symbol_table[instruction.symbol] == None:
-                self.__symbol_table[instruction.symbol] = result
-            else:
-                self.__symbol_table[instruction.symbol+"_addr"] = self.__symbol_table[instruction.symbol] 
-                self.__symbol_table[instruction.symbol] = result
-
-    def __resolve_base(self, instruction, locctr: int) -> None:
-        # Resolve BASE directives and update the symbol table.
-        result = self.calculate(instruction.operand, locctr, instruction.mnemonic)
-        if result is not None:
-            self.__symbol_table[instruction.symbol] = result
+                LOCCTR += int(instruction.format)
+            
+            # print("End of processing symbols")
+            # for symbol in self.__symbol_table:
+            #     #print symbol in hex
+            #     try:
+            #         print(f"{symbol} => {self.__symbol_table[symbol]:04X}")
+            #     except:
+            #         print(f"Error:{symbol} => {self.__symbol_table[symbol]}")
+            # print("\n")
+            
 
     def __resolve_forward_references(self) -> None:
         for exd_symbol in self.__extdef_table:
@@ -591,7 +576,6 @@ class Section:
                 self.__extdef_table[exd_symbol] = self.__symbol_table[exd_symbol]
             else:
                 print(f"Error: exd_symbol '{exd_symbol}' not found in __symbol_table")
-
     
 
     def set_location(self) -> None:
