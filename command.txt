@@ -1,4 +1,3 @@
-#for convenience
 python main.py basic.asm -o basic
 python main.py CSECT.asm -o CSECT
 python main.py LiteralSDF.asm -o LiteralSDF
