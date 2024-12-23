@@ -78,6 +78,15 @@ Below are the options you can use with `main.py`:
 
 ---
 
+### main.exe usage
+
+If you want to use main.exe instead of main.py
+make sure you put main.exe under SIC/XE-Assembler directory
+and there are opcode.json and directive.json under tables directory(you can use yours if you want)
+rest of the usage is exactly the same of main.py
+
+---
+
 ## Default Behavior
 1. **Input Directory**:
    - If no `-t` is specified, the assembler will look for the input file in the `/test` directory.
